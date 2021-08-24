@@ -25,6 +25,8 @@ PKGVERS=
 OPT_DEBUG_CFLAGS_DEBUG="-O0 -g3"
 OPT_DEBUG_CFLAGS_RELEASE="-O2"
 OPT_DEBUG_CFLAGS="${OPT_DEBUG_CFLAGS_RELEASE}"
+CUSTOM_CFLAGS=1
+STATIC_GDBFLAGS="--with-libexpat-type=static --with-libgmp-type=static"
 
 for opt in ${@}; do
   valid_arg=1
@@ -51,6 +53,12 @@ for opt in ${@}; do
   "--mode=release")
     OPT_DEBUG_CFLAGS="${OPT_DEBUG_CFLAGS_RELEASE}"
     ;;
+  "--no-custom-cflags")
+    CUSTOM_CFLAGS=0
+    ;;
+  "--no-staticlibs")
+    STATIC_GDBFLAGS=""
+    ;;
   "--help")
     valid_arg=0
     ;;& # Fallthrough (requires Bash 4+)
@@ -60,6 +68,8 @@ for opt in ${@}; do
     echo "  --clean             Erase build directory before building."
     echo "  --default-abi=      Set default ABI."
     echo "  --default-arch=     Set default architecture."
+    echo "  --no-custom-cflags  Disable expanded tool CFLAGS/CXXFLAGS."
+    echo "  --no-staticlibs     Do not force static libexpat/libgmp."
     echo "  --mode=debug        Build toolchain with debug enabled."
     echo "  --mode=release      Build toolchain with debug disabled. [Default]"
     echo "  --release-version=  Set release number."
@@ -70,6 +80,25 @@ for opt in ${@}; do
     ;;
   esac
 done
+
+# Add extra opt flags supported for the given operating system
+if [ ${CUSTOM_CFLAGS} -eq 1 ]; then
+  if [ "$(uname -o)" == "Msys" ]; then
+    OPT_DEBUG_CFLAGS="${OPT_DEBUG_CFLAGS} -Wformat -Wformat-security -Werror=format-security"
+    OPT_DEBUG_CFLAGS="${OPT_DEBUG_CFLAGS} -fPIE -fpie"
+    OPT_DEBUG_CFLAGS="${OPT_DEBUG_CFLAGS} -fPIC"
+  else
+    OPT_DEBUG_CFLAGS="${OPT_DEBUG_CFLAGS} -Wformat -Wformat-security -Werror=format-security"
+    OPT_DEBUG_CFLAGS="${OPT_DEBUG_CFLAGS} -D_FORTIFY_SOURCE=2"
+    OPT_DEBUG_CFLAGS="${OPT_DEBUG_CFLAGS} -fstack-protector-strong"
+    OPT_DEBUG_CFLAGS="${OPT_DEBUG_CFLAGS} -fPIE -fpie"
+    OPT_DEBUG_CFLAGS="${OPT_DEBUG_CFLAGS} -fPIC"
+    OPT_DEBUG_CFLAGS="${OPT_DEBUG_CFLAGS} -Wl,-z,relro"
+    OPT_DEBUG_CFLAGS="${OPT_DEBUG_CFLAGS} -Wl,-z,now"
+    OPT_DEBUG_CFLAGS="${OPT_DEBUG_CFLAGS} -Wl,-z,noexecstack"
+    OPT_DEBUG_CFLAGS="${OPT_DEBUG_CFLAGS} -Wl,-z,noexecstack"
+  fi
+fi
 
 # Create log directory
 mkdir -p ${LOGDIR}
@@ -112,6 +141,7 @@ echo "Building Binutils... logging to ${LOGFILE}"
       --prefix=${INSTALLPREFIX}       \
       --disable-werror                \
       --disable-gdb                   \
+      --with-debuginfod=no            \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
   make install
@@ -134,9 +164,11 @@ echo "Building GDB... logging to ${LOGFILE}"
       --target=riscv32-unknown-elf    \
       --prefix=${INSTALLPREFIX}       \
       --with-expat                    \
+      --with-debuginfod=no            \
       --disable-werror                \
+      ${STATIC_GDBFLAGS}              \
       ${EXTRA_OPTS}
-  make -j${PARALLEL_JOBS} all-gdb
+  make -j${PARALLEL_JOBS} all-gdb V=1
   make install-gdb
 ) > ${LOGFILE} 2>&1
 if [ $? -ne 0 ]; then
@@ -172,9 +204,10 @@ echo "Building GCC (Stage 1)... logging to ${LOGFILE}"
       --disable-nls                                       \
       --disable-bootstrap                                 \
       --enable-multilib                                   \
-      --with-multilib-generator="rv32e-ilp32e-- rv32ima-ilp32-- rv64ima-lp64-- rv64imaf-lp64-- rv64imaf-lp64f--" \
+      --with-multilib-generator="rv32ea-ilp32e-- rv32ima-ilp32-- rv64ima-lp64-- rv64imaf-lp64-- rv64imaf-lp64f--" \
       --with-arch=${DEFAULTARCH}                          \
       --with-abi=${DEFAULTABI}                            \
+      --with-zstd=no                                      \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
   make install
@@ -185,9 +218,8 @@ if [ $? -ne 0 ]; then
 fi
 
 # Newlib
-# TODO: Implement the newlib configuration required for this project
-# (e.g. default full build and second "nano" build)?
-# (Currently this is a nano-ish build)
+# NOTE: This configuration is taken from the config.logs of a
+# "riscv-gnu-toolchain" build
 LOGFILE="${LOGDIR}/newlib.log"
 echo "Building newlib... logging to ${LOGFILE}"
 (
@@ -195,22 +227,17 @@ echo "Building newlib... logging to ${LOGFILE}"
   PATH=${INSTALLPREFIX}/bin:${PATH}
   mkdir -p ${BUILDPREFIX}/newlib
   cd ${BUILDPREFIX}/newlib
-  CFLAGS_FOR_TARGET="-DPREFER_SIZE_OVER_SPEED=1 -Os" \
+  CFLAGS_FOR_TARGET="-O2 -mcmodel=medany"            \
   ../../newlib/configure                             \
       --target=riscv32-unknown-elf                   \
       --prefix=${INSTALLPREFIX}                      \
       --with-arch=${DEFAULTARCH}                     \
       --with-abi=${DEFAULTABI}                       \
       --enable-multilib                              \
-      --disable-newlib-fvwrite-in-streamio           \
-      --disable-newlib-fseek-optimization            \
-      --enable-newlib-nano-malloc                    \
-      --disable-newlib-unbuf-stream-opt              \
-      --enable-target-optspace                       \
-      --enable-newlib-reent-small                    \
-      --disable-newlib-wide-orient                   \
-      --disable-newlib-io-float                      \
-      --enable-newlib-nano-formatted-io              \
+      --enable-newlib-io-long-double                 \
+      --enable-newlib-io-long-long                   \
+      --enable-newlib-io-c99-formats                 \
+      --enable-newlib-register-fini                  \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
   make install
@@ -220,8 +247,77 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# Pico-libc
-# TODO: Build and install picolibc in its various configurations
+# Nano-newlib
+# NOTE: This configuration is taken from the config.logs of a
+# "riscv-gnu-toolchain" build
+LOGFILE="${LOGDIR}/newlib-nano.log"
+echo "Building newlib-nano... logging to ${LOGFILE}"
+(
+  set -e
+  PATH=${INSTALLPREFIX}/bin:${PATH}
+  mkdir -p ${BUILDPREFIX}/newlib-nano
+  cd ${BUILDPREFIX}/newlib-nano
+  CFLAGS_FOR_TARGET="-Os -mcmodel=medany -ffunction-sections -fdata-sections" \
+  ../../newlib/configure                             \
+      --target=riscv32-unknown-elf                   \
+      --prefix=${BUILDPREFIX}/newlib-nano-inst       \
+      --with-arch=${DEFAULTARCH}                     \
+      --with-abi=${DEFAULTABI}                       \
+      --enable-multilib                              \
+      --enable-newlib-reent-small                    \
+      --disable-newlib-fvwrite-in-streamio           \
+      --disable-newlib-fseek-optimization            \
+      --disable-newlib-wide-orient                   \
+      --enable-newlib-nano-malloc                    \
+      --disable-newlib-unbuf-stream-opt              \
+      --enable-lite-exit                             \
+      --enable-newlib-global-atexit                  \
+      --enable-newlib-nano-formatted-io              \
+      --disable-newlib-supplied-syscalls             \
+      --disable-nls                                  \
+      ${EXTRA_OPTS}
+  make -j${PARALLEL_JOBS}
+  make install
+
+  # Manualy copy the nano variant to the expected location
+  # Information obtained from "riscv-gnu-toolchain"
+  for multilib in $(${INSTALLPREFIX}/bin/riscv32-unknown-elf-gcc --print-multi-lib); do
+    multilibdir=$(echo ${multilib} | sed 's/;.*//')
+    for file in libc.a libm.a libg.a libgloss.a; do
+      cp ${BUILDPREFIX}/newlib-nano-inst/riscv32-unknown-elf/lib/${multilibdir}/${file} \
+         ${INSTALLPREFIX}/riscv32-unknown-elf/lib/${multilibdir}/${file%.*}_nano.${file##*.}
+    done
+    cp ${BUILDPREFIX}/newlib-nano-inst/riscv32-unknown-elf/lib/${multilibdir}/crt0.o \
+       ${INSTALLPREFIX}/riscv32-unknown-elf/lib/${multilibdir}/crt0.o
+  done
+  mkdir -p ${INSTALLPREFIX}/riscv32-unknown-elf/include/newlib-nano
+  cp ${BUILDPREFIX}/newlib-nano-inst/riscv32-unknown-elf/include/newlib.h \
+     ${INSTALLPREFIX}/riscv32-unknown-elf/include/newlib-nano/newlib.h
+) > ${LOGFILE} 2>&1
+if [ $? -ne 0 ]; then
+  echo "Error building newlib-nano, check log file!" > /dev/stderr
+  exit 1
+fi
+
+# Picolibc
+# TODO: Make any required configuration changes for pico-libc
+LOGFILE="${LOGDIR}/picolibc.log"
+echo "Building picolibc... logging to ${LOGFILE}"
+(
+  set -e
+  PATH=${INSTALLPREFIX}/bin:${PATH}
+  mkdir -p ${BUILDPREFIX}/picolibc
+  cd ${BUILDPREFIX}/picolibc
+  meson ${SRCPREFIX}/picolibc \
+      -Dincludedir=picolibc/riscv32-unknown-elf/include \
+      -Dlibdir=picolibc/riscv32-unknown-elf/lib \
+      --cross-file ${SRCPREFIX}/picolibc/scripts/cross-riscv32-unknown-elf.txt \
+      --prefix=/home/simon/work/buffalo/install
+) > ${LOGFILE} 2>&1
+if [ $? -ne 0 ]; then
+  echo "Error building picolibc, check log file!" > /dev/stderr
+  exit 1
+fi
 
 # GCC (stage 2)
 LOGFILE="${LOGDIR}/gcc-stage2.log"
@@ -249,9 +345,10 @@ echo "Building GCC (Stage 2)... logging to ${LOGFILE}"
       --disable-libgomp                                   \
       --disable-nls                                       \
       --enable-multilib                                   \
-      --with-multilib-generator="rv32e-ilp32e-- rv32ima-ilp32-- rv64ima-lp64-- rv64imaf-lp64-- rv64imaf-lp64f--" \
+      --with-multilib-generator="rv32ea-ilp32e-- rv32ima-ilp32-- rv64ima-lp64-- rv64imaf-lp64-- rv64imaf-lp64f--" \
       --with-arch=${DEFAULTARCH}                          \
       --with-abi=${DEFAULTABI}                            \
+      --with-zstd=no                                      \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
   make install
