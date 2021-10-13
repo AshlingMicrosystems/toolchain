@@ -313,6 +313,8 @@ echo "Building picolibc... logging to ${LOGFILE}"
       -Dlibdir=picolibc/riscv32-unknown-elf/lib \
       --cross-file ${SRCPREFIX}/picolibc/scripts/cross-riscv32-unknown-elf.txt \
       --prefix=/home/simon/work/buffalo/install
+  ninja
+  ninja install
 ) > ${LOGFILE} 2>&1
 if [ $? -ne 0 ]; then
   echo "Error building picolibc, check log file!" > /dev/stderr
