@@ -312,7 +312,7 @@ echo "Building picolibc... logging to ${LOGFILE}"
       -Dincludedir=picolibc/riscv32-unknown-elf/include \
       -Dlibdir=picolibc/riscv32-unknown-elf/lib \
       --cross-file ${SRCPREFIX}/picolibc/scripts/cross-riscv32-unknown-elf.txt \
-      --prefix=/home/simon/work/buffalo/install
+      --prefix=${INSTALLPREFIX}
   ninja
   ninja install
 ) > ${LOGFILE} 2>&1
