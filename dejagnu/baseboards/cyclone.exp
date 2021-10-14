@@ -1,0 +1,55 @@
+# Board specification for Cyclone board
+
+# Copyright (C) 2021 Embecosm Limited.
+# Contributor Jessica Mills  <jessica.mills@embecosm.com>
+
+# Load the generic configuration for this board. This will define a basic
+# set of routines needed by the tool to communicate with the board.
+load_generic_config "gdb_stub"
+
+# How to get GDB to print out a return code after breaking on exit.
+set gdb_print_return_code "print /u \$a0 & 0xff"
+
+# We need some extra and modified procs for testing through GDB. These
+# supplement or override the standard procs. In particular the result
+# of waiting depends on the argument passed to exit, not just that exit
+# was called, and gdb needs to load files in the remote target.
+search_and_load_file "library file" "gdb-stub-extra.exp" ${boards_dir}
+
+# We don't need a status wrapper, we extract the result by looking at
+# registers when we have hit a breakpoint on _exit, exit and abort.
+set_board_info needs_status_wrapper 0
+
+# Configure specifically for testing via GDB
+set_board_info gdb_run_command "continue"
+set_board_info gdb_protocol "extended-remote"
+set_board_info gdb,start_symbol "_start"
+set_board_info use_gdb_stub 1
+set_board_info netport "192.168.0.198:3333"
+
+# The compiler used to build for this board. This has *nothing* to do
+# with what compiler is tested if we're testing gcc.
+set_board_info compiler "[find_gcc]"
+
+# The basic set of flags needed to build "hello world" for this
+# board.
+# Note: change these.
+set_board_info cflags   "-fmessage-length=0 -march=rv32ia -mabi=ilp32 [libgloss_include_flags] [newlib_include_flags]"
+set_board_info ldflags  "-mhal -march=rv32ia -mabi=ilp32 -msys-crt0=/home/jessica/buffalo/hal-bsp/CMakeFiles/hal2_bsp.dir/HAL/src/crt0.S.obj -msys-lib=hal2_bsp [libgloss_link_flags] [newlib_link_flags]"
+
+set_board_info ldscript "-T/home/jessica/buffalo/jm-20210910-linux/linker.x"
+
+# And, it can't do arguments, and doesn't have real signals.
+set_board_info noargs 1
+set_board_info gdb,nosignals 1
+
+# skip gdb.reverse
+set_board_info gdb,can_reverse 0
+set_board_info gdb,use_precord 0
+
+# Setup the timeout
+if [info exists env(NIOSV_TIMEOUT)] {
+    set_board_info gcc,timeout "$env(NIOSV_TIMEOUT)"
+} else {
+    set_board_info gcc,timeout "30"
+}

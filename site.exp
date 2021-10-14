@@ -1,0 +1,22 @@
+# Cyclone specific site.exp
+
+# Use an environment specified triple if specified
+set target_triplet "riscv32-unknown-elf"
+
+global GDB
+set GDB "riscv32-unknown-elf-gdb"
+
+set GCC_UNDER_TEST "[file dirname $env(DEJAGNU)]/../install/bin/riscv32-unknown-elf-gcc"
+set GXX_UNDER_TEST "[file dirname $env(DEJAGNU)]/../install/bin/riscv32-unknown-elf-g++"
+
+set srcdir "[file dirname $env(DEJAGNU)]/../gcc/gcc/testsuite"
+
+# Make sure we look in the right place for the board description files. Add
+# our local boards directories
+if ![info exists boards_dir] {
+    lappend boards_dir "[file dirname $env(DEJAGNU)]/dejagnu"
+    lappend boards_dir "[file dirname $env(DEJAGNU)]/dejagnu/baseboards"
+} else {
+    set boards_dir "[file dirname $env(DEJAGNU)]/dejagnu"
+    lappend boards_dir "[file dirname $env(DEJAGNU)]/dejagnu/baseboards"
+}
