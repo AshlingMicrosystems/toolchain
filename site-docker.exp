@@ -1,0 +1,20 @@
+# RISC-V toolchain site.exp for running in Embecosm's docker setup
+
+set target_triplet "riscv32-unknown-elf"
+set target_alias "riscv32-unknown-elf"
+
+set GCC_UNDER_TEST "/toolchain/bin/riscv32-unknown-elf-gcc"
+set GXX_UNDER_TEST "/toolchain/bin/riscv32-unknown-elf-g++"
+
+set srcdir "/gcc-src/gcc/testsuite"
+set tmpdir "/t/tmp"
+
+# Make sure we look in the right place for the board description files. Add
+# our local boards directories
+if [info exists boards_dir] {
+    lappend boards_dir "[file dirname $env(DEJAGNU)]/dejagnu"
+    lappend boards_dir "[file dirname $env(DEJAGNU)]/dejagnu/baseboards"
+} else {
+    set boards_dir "[file dirname $env(DEJAGNU)]/dejagnu"
+    lappend boards_dir "[file dirname $env(DEJAGNU)]/dejagnu/baseboards"
+}

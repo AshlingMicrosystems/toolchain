@@ -1,0 +1,8 @@
+# Dockerfile for Ashling/riscv Linux builds
+FROM centos:centos7
+LABEL maintainer simon.cook@embecosm.com
+RUN yum -y upgrade && yum -y groupinstall 'Development tools' && \
+    yum -y install texinfo texinfo-tex texlive tcl && \
+    yum -y install epel-release && \
+    yum -y install cmake3 meson patchelf && \
+    ln -s /usr/bin/cmake3 /usr/bin/cmake
