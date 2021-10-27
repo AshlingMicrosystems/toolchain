@@ -1,0 +1,81 @@
+# NOTE: This makefile is intended to run from the top level directory, NOT the
+# toolchain directory where it is stored
+
+# Image names used for docker images built here
+IMAGENAME?=buffaloimage
+TESTIMAGENAME?=buffaloimagetest
+
+# Calculate User ID for running scripts in Docker container
+UID:=$(shell id -u)
+
+.PHONY: all build build-qemu smoketestprep smoke regression
+
+all:
+	@echo "Please specify a build target"
+	@false
+
+build:
+	rm -rf build install
+	docker build -t $(IMAGENAME) -f toolchain/Dockerfile-build toolchain
+	docker run --rm -t -i -u $(UID):$(UID) -v $(PWD):/build -w /build/toolchain $(IMAGENAME) ./build-all.sh --clean
+	cd install && find . -type f -exec ldd {} \; 2>&1 | grep -v 'not a dynamic executable' | sed 's/(.*//' | sort | uniq
+
+	# Do some testing on some platforms where I can
+	$(MAKE) smoketestprep
+	$(MAKE) smoke IMAGE=centos:centos7 OUT=centos7
+	$(MAKE) smoke IMAGE=centos:centos8 OUT=centos8
+	$(MAKE) smoke IMAGE=ubuntu:16.04 OUT=ubuntu1604
+	$(MAKE) smoke IMAGE=ubuntu:18.04 OUT=ubuntu1804
+	$(MAKE) smoke IMAGE=ubuntu:20.04 OUT=ubuntu2004
+
+build-full:
+	docker build -t $(IMAGENAME) -f toolchain/Dockerfile-full-linux toolchain
+	docker run --rm -t -i -u $(UID):$(UID) -v $(PWD):/build -w /build/toolchain $(IMAGENAME) ./build-all-full-linux.sh --clean
+	cd install && find . -type f -exec ldd {} \; 2>&1 | grep -v 'not a dynamic executable' | sed 's/(.*//' | sort | uniq
+
+	# Do some testing on some platforms where I can
+	$(MAKE) smoketestprep
+	$(MAKE) smokefull IMAGE=centos:centos7 OUT=centos7
+	$(MAKE) smokefull IMAGE=centos:centos8 OUT=centos8
+	$(MAKE) smokefull IMAGE=ubuntu:16.04 OUT=ubuntu1604
+	$(MAKE) smokefull IMAGE=ubuntu:18.04 OUT=ubuntu1804
+	$(MAKE) smokefull IMAGE=ubuntu:20.04 OUT=ubuntu2004
+
+build-qemu:
+	rm -rf build-qemu install-qemu
+	mkdir build-qemu
+	docker build -t $(TESTIMAGENAME) -f toolchain/Dockerfile-regression toolchain
+	docker run --rm -t -i -u $(UID):$(UID) -v $(PWD):$(PWD) -w $(PWD)/build-qemu $(TESTIMAGENAME) $(PWD)/qemu/configure --target-list=riscv32-linux-user,riscv64-linux-user --prefix=$(PWD)/install-qemu
+	docker run --rm -t -i -u $(UID):$(UID) -v $(PWD):$(PWD) -w $(PWD)/build-qemu $(TESTIMAGENAME) make -j $(shell nproc)
+	docker run --rm -t -i -u $(UID):$(UID) -v $(PWD):$(PWD) -w $(PWD)/build-qemu $(TESTIMAGENAME) make install
+
+smoketestprep:
+	rm -rf smoketest
+	mkdir -p smoketest
+	echo 'int main(void){return 0;}' > smoketest/test.c
+	mkdir -p smoketest/dis
+	cp toolchain/smoketest-disassemble/* smoketest/dis
+
+smoke:
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gcc -Os -flto test.c -o $(OUT).out
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gcc --specs=nano.specs -Os -flto test.c -o $(OUT).out
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gcc --specs=picolibc.specs --oslib=semihost -Os -flto test.c -o $(OUT).out
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gdb --version
+
+smokefull:
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gcc -Os -flto test.c -o $(OUT).out
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gcc --specs=nano.specs -Os -flto test.c -o $(OUT).out
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gcc --specs=picolibc.specs --oslib=semihost -Os -flto test.c -o $(OUT).out
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gdb --version
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/python3 --version
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest/dis $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gcc -march=rv32ic test.c -o a.out
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest/dis $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gdb -x expattest.gdb
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest/dis $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gdb -x test.gdb
+
+regression:
+	docker build -t $(TESTIMAGENAME) -f toolchain/Dockerfile-regression toolchain
+	mkdir -p $(PWD)/toolchain/tmp
+	#docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/install-qemu:/q:ro -v $(PWD)/gcc:/gcc-src:ro -v $(PWD)/toolchain:/t -w /t/tmp -e DEJAGNU=/t/site-docker.exp -e USER=demo $(TESTIMAGENAME) runtest --tool=gcc --target_board='riscv32-sim/-march=rv32ima/-mabi=ilp32' 2>&1 | tee testing.log
+	#docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/install-qemu:/q:ro -v $(PWD)/gcc:/gcc-src:ro -v $(PWD)/toolchain:/t -w /t/tmp -e DEJAGNU=/t/site-docker.exp -e USER=demo $(TESTIMAGENAME) runtest --tool=g++ --target_board='riscv32-sim/-march=rv32ima/-mabi=ilp32' 2>&1 | tee testingg++.log
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/install-qemu:/q:ro -v $(PWD)/gcc:/gcc-src:ro -v $(PWD)/toolchain:/t -w /t/tmp -e DEJAGNU=/t/site-docker.exp -e USER=demo $(TESTIMAGENAME) runtest --tool=gcc --target_board='riscv32-sim/-march=rv32ia/-mabi=ilp32 riscv32-sim/-march=rv32ima/-mabi=ilp32 riscv64-sim/-march=rv64ima/-mabi=lp64 riscv64-sim/-march=rv64imaf/-mabi=lp64 riscv64-sim/-march=rv64imaf/-mabi=lp64f riscv32-sim/-march=rv32ia/-mabi=ilp32/--specs=nano.specs riscv32-sim/-march=rv32ima/-mabi=ilp32/--specs=nano.specs riscv64-sim/-march=rv64ima/-mabi=lp64/--specs=nano.specs riscv64-sim/-march=rv64imaf/-mabi=lp64/--specs=nano.specs riscv64-sim/-march=rv64imaf/-mabi=lp64f/--specs=nano.specs riscv32-sim/-march=rv32ia/-mabi=ilp32/--specs=picolibc.specs/--oslib=semihost riscv32-sim/-march=rv32ima/-mabi=ilp32/--specs=picolibc.specs/--oslib=semihost riscv64-sim/-march=rv64ima/-mabi=lp64/--specs=picolibc.specs/--oslib=semihost riscv64-sim/-march=rv64imaf/-mabi=lp64/--specs=picolibc.specs/--oslib=semihost riscv64-sim/-march=rv64imaf/-mabi=lp64f/--specs=picolibc.specs/--oslib=semihost' 2>&1 | tee testing.log
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/install-qemu:/q:ro -v $(PWD)/gcc:/gcc-src:ro -v $(PWD)/toolchain:/t -w /t/tmp -e DEJAGNU=/t/site-docker.exp -e USER=demo $(TESTIMAGENAME) runtest --tool=g++ --target_board='riscv32-sim/-march=rv32ia/-mabi=ilp32 riscv32-sim/-march=rv32ima/-mabi=ilp32 riscv64-sim/-march=rv64ima/-mabi=lp64 riscv64-sim/-march=rv64imaf/-mabi=lp64 riscv64-sim/-march=rv64imaf/-mabi=lp64f riscv32-sim/-march=rv32ia/-mabi=ilp32/--specs=nano.specs riscv32-sim/-march=rv32ima/-mabi=ilp32/--specs=nano.specs riscv64-sim/-march=rv64ima/-mabi=lp64/--specs=nano.specs riscv64-sim/-march=rv64imaf/-mabi=lp64/--specs=nano.specs riscv64-sim/-march=rv64imaf/-mabi=lp64f/--specs=nano.specs riscv32-sim/-march=rv32ia/-mabi=ilp32/--specs=picolibc.specs/--oslib=semihost riscv32-sim/-march=rv32ima/-mabi=ilp32/--specs=picolibc.specs/--oslib=semihost riscv64-sim/-march=rv64ima/-mabi=lp64/--specs=picolibc.specs/--oslib=semihost riscv64-sim/-march=rv64imaf/-mabi=lp64/--specs=picolibc.specs/--oslib=semihost riscv64-sim/-march=rv64imaf/-mabi=lp64f/--specs=picolibc.specs/--oslib=semihost' 2>&1 | tee testingcxx.log
