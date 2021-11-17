@@ -466,6 +466,7 @@ echo "Building picolibc... logging to ${LOGFILE}"
   meson ${SRCPREFIX}/picolibc \
       -Dincludedir=picolibc/riscv32-unknown-elf/include \
       -Dlibdir=picolibc/riscv32-unknown-elf/lib \
+      -Dnewlib-global-errno=true \
       --cross-file ${SRCPREFIX}/picolibc/scripts/cross-riscv32-unknown-elf.txt \
       --prefix=${INSTALLPREFIX}
   ninja
