@@ -157,9 +157,17 @@ LOGFILE="${LOGDIR}/libgmp.log"
 echo "Building libgmp... logging to ${LOGFILE}"
 (
   set -xe
+  # Apply CVE if not specified
+  cd ${SRCPREFIX}/gmp-6.2.1
+  if ! grep 'if (UNLIKELY (abs_csize > ~(mp_bitcnt_t) 0 / 8))' mpz/inp_raw.c; then
+    echo "Applying PATCH gmp-cve-2021-43618.patch..."
+    patch -p1 < ${SRCPREFIX}/toolchain/patches/gmp-cve-2021-43618.patch
+  fi
   mkdir -p ${BUILDPREFIX}/libgmp
   cd ${BUILDPREFIX}/libgmp
   CFLAGS="-fPIC" \
+  CFLAGS="${OPT_DEBUG_CFLAGS}" \
+  CXXFLAGS="${OPT_DEBUG_CFLAGS}" \
   ../../gmp-6.2.1/configure \
     --prefix=${LIBINSTPREFIX}/libgmp \
     --enable-shared=no
@@ -234,6 +242,13 @@ echo "Building GCC (Stage 1)... logging to ${LOGFILE}"
   set -e
   cd ${SRCPREFIX}/gcc
   ./contrib/download_prerequisites
+  # Apply a local patch to work around CVE-2021-43618
+  cd gmp-6.1.0
+  if ! grep 'if (UNLIKELY (abs_csize > ~(mp_bitcnt_t) 0 / 8))' mpz/inp_raw.c; then
+    echo "Applying PATCH gmp-cve-2021-43618.patch..."
+    patch -p1 < ${SRCPREFIX}/toolchain/patches/gmp-cve-2021-43618.patch
+  fi
+
   mkdir -p ${BUILDPREFIX}/gcc-stage1
   cd ${BUILDPREFIX}/gcc-stage1
   CFLAGS="${OPT_DEBUG_CFLAGS}" \

@@ -137,7 +137,9 @@ echo "Building libexpat... logging to ${LOGFILE}"
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=${LIBINSTPREFIX}/libexpat \
       -DEXPAT_ENABLE_INSTALL=ON \
-      -DEXPAT_SHARED_LIBS=OFF
+      -DEXPAT_SHARED_LIBS=OFF \
+      -DCMAKE_C_FLAGS="${OPT_DEBUG_CFLAGS}" \
+      -DCMAKE_CXX_FLAGS="${OPT_DEBUG_CFLAGS}"
   cmake --build .
   cmake --build . --target install
   # Alias lib64 -> lib so GDB can pick up this library if it exists
@@ -154,9 +156,16 @@ LOGFILE="${LOGDIR}/libgmp.log"
 echo "Building libgmp... logging to ${LOGFILE}"
 (
   set -xe
+  # Apply CVE if not specified
+  cd ${SRCPREFIX}/gmp-6.2.1
+  if ! grep 'if (UNLIKELY (abs_csize > ~(mp_bitcnt_t) 0 / 8))' mpz/inp_raw.c; then
+    echo "Applying PATCH gmp-cve-2021-43618.patch..."
+    patch -p1 < ${SRCPREFIX}/toolchain/patches/gmp-cve-2021-43618.patch
+  fi
   mkdir -p ${BUILDPREFIX}/libgmp
   cd ${BUILDPREFIX}/libgmp
-  CFLAGS="-fPIC" \
+  CFLAGS="${OPT_DEBUG_CFLAGS}" \
+  CXXFLAGS="${OPT_DEBUG_CFLAGS}" \
   ../../gmp-6.2.1/configure \
     --prefix=${LIBINSTPREFIX}/libgmp \
     --enable-shared=no
@@ -176,7 +185,7 @@ echo "Building openssl... logging to ${LOGFILE}"
   cd ${BUILDPREFIX}/openssl
   perl ../../openssl/Configure \
       --prefix=${LIBINSTPREFIX}/openssl \
-      linux-x86_64 no-shared
+      linux-x86_64 no-shared ${OPT_DEBUG_CFLAGS}
   make -j${PARALLEL_JOBS}
   make install
 ) > ${LOGFILE} 2>&1
@@ -191,7 +200,8 @@ echo "Building libffi... logging to ${LOGFILE}"
   set -xe
   mkdir -p ${BUILDPREFIX}/libffi
   cd ${BUILDPREFIX}/libffi
-  CFLAGS="-fPIC" \
+  CFLAGS="${OPT_DEBUG_CFLAGS}" \
+  CXXFLAGS="${OPT_DEBUG_CFLAGS}" \
   ../../libffi/configure \
     --prefix=${LIBINSTPREFIX}/libffi \
     --enable-shared=no
@@ -209,7 +219,8 @@ echo "Building zlib... logging to ${LOGFILE}"
   set -xe
   mkdir -p ${BUILDPREFIX}/zlib
   cd ${BUILDPREFIX}/zlib
-  CFLAGS="-fPIC" \
+  CFLAGS="${OPT_DEBUG_CFLAGS}" \
+  CXXFLAGS="${OPT_DEBUG_CFLAGS}" \
   ../../zlib/configure \
     --prefix=${LIBINSTPREFIX}/zlib \
     --static
@@ -227,7 +238,8 @@ echo "Building sqlite... logging to ${LOGFILE}"
   set -xe
   mkdir -p ${BUILDPREFIX}/sqlite
   cd ${BUILDPREFIX}/sqlite
-  CFLAGS="-fPIC" \
+  CFLAGS="${OPT_DEBUG_CFLAGS}" \
+  CXXFLAGS="${OPT_DEBUG_CFLAGS}" \
   ../../sqlite/configure \
     --prefix=${LIBINSTPREFIX}/sqlite \
     --enable-shared=no \
@@ -251,6 +263,8 @@ echo "Building python... logging to ${LOGFILE}"
   CPPFLAGS="$(pkg-config --cflags-only-I libffi zlib sqlite3)" \
   LDFLAGS="$(pkg-config --libs-only-L libffi zlib sqlite3)" \
   LIBS="$(pkg-config --libs-only-l libffi zlib sqlite3)" \
+  CFLAGS="${OPT_DEBUG_CFLAGS}" \
+  CXXFLAGS="${OPT_DEBUG_CFLAGS}" \
   ../../cpython/configure \
     --enable-shared \
     --prefix=${INSTALLPREFIX}
@@ -338,6 +352,13 @@ echo "Building GCC (Stage 1)... logging to ${LOGFILE}"
   set -e
   cd ${SRCPREFIX}/gcc
   ./contrib/download_prerequisites
+  # Apply a local patch to work around CVE-2021-43618
+  cd gmp-6.1.0
+  if ! grep 'if (UNLIKELY (abs_csize > ~(mp_bitcnt_t) 0 / 8))' mpz/inp_raw.c; then
+    echo "Applying PATCH gmp-cve-2021-43618.patch..."
+    patch -p1 < ${SRCPREFIX}/toolchain/patches/gmp-cve-2021-43618.patch
+  fi
+
   mkdir -p ${BUILDPREFIX}/gcc-stage1
   cd ${BUILDPREFIX}/gcc-stage1
   CFLAGS="${OPT_DEBUG_CFLAGS}" \
