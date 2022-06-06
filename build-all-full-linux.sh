@@ -272,14 +272,14 @@ echo "Building python... logging to ${LOGFILE}"
   make install
 
   # We need to patch the rpath for python for GDB to successfully use it
-  patchelf --set-rpath '$ORIGIN/../lib' ${INSTALLPREFIX}/bin/python3.9
+  patchelf --set-rpath '$ORIGIN/../lib' ${INSTALLPREFIX}/bin/python3.10
   patchelf --set-rpath '$ORIGIN' ${INSTALLPREFIX}/lib/libpython3.so
-  patchelf --set-rpath '$ORIGIN' ${INSTALLPREFIX}/lib/libpython3.9.so.1.0
+  patchelf --set-rpath '$ORIGIN' ${INSTALLPREFIX}/lib/libpython3.10.so.1.0
 
   # Additionally need to strip debug information from these files
-  strip -g ${INSTALLPREFIX}/bin/python3.9 \
+  strip -g ${INSTALLPREFIX}/bin/python3.10 \
     ${INSTALLPREFIX}/lib/libpython3.so \
-    ${INSTALLPREFIX}/lib/libpython3.9.so.1.0
+    ${INSTALLPREFIX}/lib/libpython3.10.so.1.0
 ) > ${LOGFILE} 2>&1
 if [ $? -ne 0 ]; then
   echo "Error building python, check log file!" > /dev/stderr
@@ -291,16 +291,20 @@ LOGFILE="${LOGDIR}/binutils.log"
 echo "Building Binutils... logging to ${LOGFILE}"
 (
   set -e
+  export PKG_CONFIG_PATH=$(ls -d ${LIBINSTPREFIX}/*/lib/pkgconfig | tr '\n' ':' | sed 's/.$//')
   mkdir -p ${BUILDPREFIX}/binutils
   cd ${BUILDPREFIX}/binutils
-  CFLAGS="${OPT_DEBUG_CFLAGS}" \
-  CXXFLAGS="${OPT_DEBUG_CFLAGS}" \
+  CFLAGS="${OPT_DEBUG_CFLAGS} $(pkg-config --cflags-only-I zlib)" \
+  CXXFLAGS="${OPT_DEBUG_CFLAGS} $(pkg-config --cflags-only-I zlib)" \
+  LDFLAGS="$(pkg-config --libs-only-L zlib) -L${INSTALLPREFIX}/lib" \
   ../../binutils/configure            \
       --target=riscv32-unknown-elf    \
       --prefix=${INSTALLPREFIX}       \
       --disable-werror                \
       --disable-gdb                   \
+      --with-isa-spec=2.2             \
       --with-debuginfod=no            \
+      --with-system-zlib              \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
   make install-strip
@@ -319,8 +323,8 @@ echo "Building GDB... logging to ${LOGFILE}"
   export PKG_CONFIG_PATH=$(ls -d ${LIBINSTPREFIX}/*/lib/pkgconfig | tr '\n' ':' | sed 's/.$//')
   mkdir -p ${BUILDPREFIX}/gdb
   cd ${BUILDPREFIX}/gdb
-  CFLAGS="${OPT_DEBUG_CFLAGS}" \
-  CXXFLAGS="${OPT_DEBUG_CFLAGS}" \
+  CFLAGS="${OPT_DEBUG_CFLAGS} $(pkg-config --cflags-only-I zlib)" \
+  CXXFLAGS="${OPT_DEBUG_CFLAGS} $(pkg-config --cflags-only-I zlib)" \
   LDFLAGS="$(pkg-config --libs-only-L libffi zlib sqlite3 expat) -L${INSTALLPREFIX}/lib" \
   ../../gdb/configure                 \
       --target=riscv32-unknown-elf    \
@@ -332,6 +336,8 @@ echo "Building GDB... logging to ${LOGFILE}"
       --enable-tui=no                 \
       --with-python=${INSTALLPREFIX}/bin/python3 \
       --with-libgmp-prefix=${LIBINSTPREFIX}/libgmp \
+      --with-isa-spec=2.2             \
+      --with-system-zlib              \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS} all-gdb V=1
   make install-strip-gdb
@@ -353,16 +359,18 @@ echo "Building GCC (Stage 1)... logging to ${LOGFILE}"
   cd ${SRCPREFIX}/gcc
   ./contrib/download_prerequisites
   # Apply a local patch to work around CVE-2021-43618
-  cd gmp-6.1.0
+  cd gmp-6.2.1
   if ! grep 'if (UNLIKELY (abs_csize > ~(mp_bitcnt_t) 0 / 8))' mpz/inp_raw.c; then
     echo "Applying PATCH gmp-cve-2021-43618.patch..."
     patch -p1 < ${SRCPREFIX}/toolchain/patches/gmp-cve-2021-43618.patch
   fi
 
+  export PKG_CONFIG_PATH=$(ls -d ${LIBINSTPREFIX}/*/lib/pkgconfig | tr '\n' ':' | sed 's/.$//')
   mkdir -p ${BUILDPREFIX}/gcc-stage1
   cd ${BUILDPREFIX}/gcc-stage1
-  CFLAGS="${OPT_DEBUG_CFLAGS}" \
-  CXXFLAGS="${OPT_DEBUG_CFLAGS}" \
+  CFLAGS="${OPT_DEBUG_CFLAGS} $(pkg-config --cflags-only-I zlib)" \
+  CXXFLAGS="${OPT_DEBUG_CFLAGS} $(pkg-config --cflags-only-I zlib)" \
+  LDFLAGS="$(pkg-config --libs-only-L zlib)" \
   ../../gcc/configure                                     \
       --target=riscv32-unknown-elf                        \
       --prefix=${INSTALLPREFIX}                           \
@@ -380,10 +388,12 @@ echo "Building GCC (Stage 1)... logging to ${LOGFILE}"
       --disable-nls                                       \
       --disable-bootstrap                                 \
       --enable-multilib                                   \
-      --with-multilib-generator="rv32ia-ilp32-- rv32ima-ilp32-- rv64ima-lp64-- rv64imaf-lp64-- rv64imaf-lp64f--" \
+      --with-multilib-generator="rv32ea-ilp32e-- rv32ia-ilp32-- rv32ima-ilp32-- rv64ima-lp64-- rv64imaf-lp64-- rv64imaf-lp64f--" \
       --with-arch=${DEFAULTARCH}                          \
       --with-abi=${DEFAULTABI}                            \
       --with-zstd=no                                      \
+      --with-system-zlib                                  \
+      --disable-werror \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
   make install-strip
@@ -503,11 +513,13 @@ LOGFILE="${LOGDIR}/gcc-stage2.log"
 echo "Building GCC (Stage 2)... logging to ${LOGFILE}"
 (
   set -e
+  export PKG_CONFIG_PATH=$(ls -d ${LIBINSTPREFIX}/*/lib/pkgconfig | tr '\n' ':' | sed 's/.$//')
   cd ${SRCPREFIX}/gcc
   mkdir -p ${BUILDPREFIX}/gcc-stage2
   cd ${BUILDPREFIX}/gcc-stage2
-  CFLAGS="${OPT_DEBUG_CFLAGS}" \
-  CXXFLAGS="${OPT_DEBUG_CFLAGS}" \
+  CFLAGS="${OPT_DEBUG_CFLAGS} $(pkg-config --cflags-only-I zlib)" \
+  CXXFLAGS="${OPT_DEBUG_CFLAGS} $(pkg-config --cflags-only-I zlib)" \
+  LDFLAGS="$(pkg-config --libs-only-L zlib)" \
   ../../gcc/configure                                     \
       --target=riscv32-unknown-elf                        \
       --prefix=${INSTALLPREFIX}                           \
@@ -523,11 +535,14 @@ echo "Building GCC (Stage 2)... logging to ${LOGFILE}"
       --disable-quadmath                                  \
       --disable-libgomp                                   \
       --disable-nls                                       \
+      --disable-bootstrap                                 \
       --enable-multilib                                   \
-      --with-multilib-generator="rv32ia-ilp32-- rv32ima-ilp32-- rv64ima-lp64-- rv64imaf-lp64-- rv64imaf-lp64f--" \
+      --with-multilib-generator="rv32ea-ilp32e-- rv32ia-ilp32-- rv32ima-ilp32-- rv64ima-lp64-- rv64imaf-lp64-- rv64imaf-lp64f--" \
       --with-arch=${DEFAULTARCH}                          \
       --with-abi=${DEFAULTABI}                            \
       --with-zstd=no                                      \
+      --with-system-zlib                                  \
+      --disable-werror \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
   make install-strip
