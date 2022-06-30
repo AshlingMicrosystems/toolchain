@@ -194,6 +194,8 @@ echo "Building Binutils... logging to ${LOGFILE}"
       --disable-werror                \
       --disable-gdb                   \
       --with-debuginfod=no            \
+      --with-isa-spec=2.2             \
+      --with-system-zlib              \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
   make install-strip
@@ -223,8 +225,10 @@ echo "Building GDB... logging to ${LOGFILE}"
       --with-system-readline          \
       --disable-werror                \
       --enable-tui=no                 \
-      --with-python=${SRCPREFIX}/python/python-3.9.7-combined/python.exe \
+      --with-python=${SRCPREFIX}/python/python-3.10.5-combined/python.exe \
       --with-libgmp-prefix=${LIBINSTPREFIX}/libgmp \
+      --with-isa-spec=2.2             \
+      --with-system-zlib              \
       ${STATIC_GDBFLAGS}              \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS} all-gdb V=1
@@ -243,7 +247,7 @@ echo "Building GCC (Stage 1)... logging to ${LOGFILE}"
   cd ${SRCPREFIX}/gcc
   ./contrib/download_prerequisites
   # Apply a local patch to work around CVE-2021-43618
-  cd gmp-6.1.0
+  cd gmp-6.2.1
   if ! grep 'if (UNLIKELY (abs_csize > ~(mp_bitcnt_t) 0 / 8))' mpz/inp_raw.c; then
     echo "Applying PATCH gmp-cve-2021-43618.patch..."
     patch -p1 < ${SRCPREFIX}/toolchain/patches/gmp-cve-2021-43618.patch
@@ -270,10 +274,12 @@ echo "Building GCC (Stage 1)... logging to ${LOGFILE}"
       --disable-nls                                       \
       --disable-bootstrap                                 \
       --enable-multilib                                   \
-      --with-multilib-generator="rv32ia-ilp32-- rv32ima-ilp32-- rv64ima-lp64-- rv64imaf-lp64-- rv64imaf-lp64f--" \
+      --with-isa-spec=2.2                                 \
+      --with-multilib-generator="rv32ea-ilp32e-- rv32ia-ilp32-- rv32ima-ilp32-- rv64ima-lp64-- rv64imaf-lp64-- rv64imaf-lp64f--" \
       --with-arch=${DEFAULTARCH}                          \
       --with-abi=${DEFAULTABI}                            \
       --with-zstd=no                                      \
+      --with-system-zlib                                  \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
   make install-strip
@@ -414,10 +420,13 @@ echo "Building GCC (Stage 2)... logging to ${LOGFILE}"
       --disable-libgomp                                   \
       --disable-nls                                       \
       --enable-multilib                                   \
+      --with-isa-spec=2.2                                 \
       --with-multilib-generator="rv32ia-ilp32-- rv32ima-ilp32-- rv64ima-lp64-- rv64imaf-lp64-- rv64imaf-lp64f--" \
       --with-arch=${DEFAULTARCH}                          \
       --with-abi=${DEFAULTABI}                            \
       --with-zstd=no                                      \
+      --with-system-zlib                                  \
+      --enable-libstdcxx-pch=no                           \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
   make install-strip
