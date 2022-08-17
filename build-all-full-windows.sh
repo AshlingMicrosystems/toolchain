@@ -421,7 +421,7 @@ echo "Building GCC (Stage 2)... logging to ${LOGFILE}"
       --disable-nls                                       \
       --enable-multilib                                   \
       --with-isa-spec=2.2                                 \
-      --with-multilib-generator="rv32ia-ilp32-- rv32ima-ilp32-- rv64ima-lp64-- rv64imaf-lp64-- rv64imaf-lp64f--" \
+      --with-multilib-generator="rv32ea-ilp32e-- rv32ia-ilp32-- rv32ima-ilp32-- rv64ima-lp64-- rv64imaf-lp64-- rv64imaf-lp64f--" \
       --with-arch=${DEFAULTARCH}                          \
       --with-abi=${DEFAULTABI}                            \
       --with-zstd=no                                      \
