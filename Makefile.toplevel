@@ -8,11 +8,51 @@ TESTIMAGENAME?=buffaloimagetest
 # Calculate User ID for running scripts in Docker container
 UID:=$(shell id -u)
 
+# Version of Python for Windows build
+PYTHONVERS:=3.10.5
+
 .PHONY: all build build-qemu smoketestprep smoke regression
 
 all:
 	@echo "Please specify a build target"
 	@false
+
+windows-package:
+	@echo "Checking environment..."
+	@test $(PACKAGE) || (echo "Please specify package name. Usage: make $@ PACKAGE="; false)
+	@test $(DOCDIR) || (echo "Please specify PDF documentation directory. Usage: make $@ DOCDIR="; false)
+	@test -f $(DOCDIR)/gdb.pdf || (echo "Unable to find PDF documentation in \"$(DOCDIR)\"."; false)
+	@test -f toolchain/Makefile.toplevel || (echo "Unable to find this makefile?"; false)
+	@test -d binutils || (echo "Unable to find binutils directory!"; false)
+	@test -d gcc || (echo "Unable to find gcc directory!"; false)
+	@test -d gdb || (echo "Unable to find gdb directory!"; false)
+	@test -d newlib || (echo "Unable to find newlib directory!"; false)
+	@test -d picolibc || (echo "Unable to find picolibc directory!"; false)
+	@test -d gmp-6.2.1 || (echo "Unable to find gmp-6.2.1 directory!"; false)
+	@test -d libexpat || (echo "Unable to find libexpat directory!"; false)
+	@test -f python/python-$(PYTHONVERS).tar.xz || (echo "Unable to find python source!"; false)
+	@test -f python/python-$(PYTHONVERS)-embed-amd64.zip || (echo "Unable to find python binary!"; false)
+	rm -rf python/Python-$(PYTHONVERS) python/python-$(PYTHONVERS)-combined
+	cd python && tar xf python-$(PYTHONVERS).tar.xz
+	@# Create a combined python folder we can use for building GDB
+	mkdir -p python/python-$(PYTHONVERS)-combined/libs
+	cd python/python-$(PYTHONVERS)-combined && unzip -q ../python-$(PYTHONVERS)-embed-amd64.zip
+	cd python/python-$(PYTHONVERS)-combined/libs && unzip -q ../../python-$(PYTHONVERS)-embed-amd64.zip
+	cp -rf python/Python-$(PYTHONVERS)/Include python/python-$(PYTHONVERS)-combined/Include
+	cp python/Python-$(PYTHONVERS)/PC/pyconfig.h python/python-$(PYTHONVERS)-combined/Include
+	@# Now do the build
+	rm -rf build install
+	./toolchain/build-all-full-windows.sh
+	find install -name '*.dll.a' -exec rm {} \;
+	cd install && ../toolchain/extract-ucrt-dlls.sh
+	cd install/bin && unzip -q ../../python/python-$(PYTHONVERS)-embed-amd64.zip
+	cd install/bin && rm -f python.exe pythonw.exe
+	mkdir -p install/share/doc install/share/doc/gcc
+	cp -r $(DOCDIR)/*.pdf install/share/doc/
+	cp -r $(DOCDIR)/gcc/*.pdf install/share/doc/gcc/
+	mv install $(PACKAGE)
+	zip -9r $(PACKAGE).zip $(PACKAGE)
+	mv $(PACKAGE) install
 
 linux-package:
 	@# Check environment before running
