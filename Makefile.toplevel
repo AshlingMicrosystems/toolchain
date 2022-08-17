@@ -14,32 +14,56 @@ all:
 	@echo "Please specify a build target"
 	@false
 
+linux-package:
+	@# Check environment before running
+	@echo "Checking environment..."
+	@test $(PACKAGE) || (echo "Please specify package name. Usage: make $@ PACKAGE="; false)
+	@test -f toolchain/Makefile.toplevel || (echo "Unable to find this makefile?"; false)
+	@test -d binutils || (echo "Unable to find binutils directory!"; false)
+	@test -d gcc || (echo "Unable to find gcc directory!"; false)
+	@test -d gdb || (echo "Unable to find gdb directory!"; false)
+	@test -d newlib || (echo "Unable to find newlib directory!"; false)
+	@test -d picolibc || (echo "Unable to find picolibc directory!"; false)
+	@test -d cpython || (echo "Unable to find cpython directory!"; false)
+	@test -d gmp-6.2.1 || (echo "Unable to find gmp-6.2.1 directory!"; false)
+	@test -d libexpat || (echo "Unable to find libexpat directory!"; false)
+	@test -d libffi || (echo "Unable to find libffi directory!"; false)
+	@test -f libffi/configure || (echo "libffi autogen.sh not run?"; false)
+	@test -d openssl || (echo "Unable to find openssl directory!"; false)
+	@test -d sqlite || (echo "Unable to find sqlite directory!"; false)
+	@test -d zlib || (echo "Unable to find zlib directory!"; false)
+	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) build-full
+	rm -f install/bin/2to3* install/bin/idle3* install/bin/pip3* install/bin/pydoc3* install/bin/python3*
+	tar cf $(PACKAGE).tar --transform 's/^install/$(PACKAGE)/' install
+	xz -9ev $(PACKAGE).tar
+
 build:
 	rm -rf build install
 	docker build -t $(IMAGENAME) -f toolchain/Dockerfile-build toolchain
 	docker run --rm -t -i -u $(UID):$(UID) -v $(PWD):/build -w /build/toolchain $(IMAGENAME) ./build-all.sh --clean
 	cd install && find . -type f -exec ldd {} \; 2>&1 | grep -v 'not a dynamic executable' | sed 's/(.*//' | sort | uniq
 
-	# Do some testing on some platforms where I can
-	$(MAKE) smoketestprep
-	$(MAKE) smoke IMAGE=centos:centos7 OUT=centos7
-	$(MAKE) smoke IMAGE=centos:centos8 OUT=centos8
-	$(MAKE) smoke IMAGE=ubuntu:16.04 OUT=ubuntu1604
-	$(MAKE) smoke IMAGE=ubuntu:18.04 OUT=ubuntu1804
-	$(MAKE) smoke IMAGE=ubuntu:20.04 OUT=ubuntu2004
+	@# Do some testing on some platforms where I can
+	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) smoketestprep
+	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) smoke IMAGE=centos:centos7 OUT=centos7
+	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) smoke IMAGE=centos:centos8 OUT=centos8
+	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) smoke IMAGE=ubuntu:16.04 OUT=ubuntu1604
+	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) smoke IMAGE=ubuntu:18.04 OUT=ubuntu1804
+	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) smoke IMAGE=ubuntu:20.04 OUT=ubuntu2004
 
 build-full:
+	rm -rf build install
 	docker build -t $(IMAGENAME) -f toolchain/Dockerfile-full-linux toolchain
 	docker run --rm -t -i -u $(UID):$(UID) -v $(PWD):/build -w /build/toolchain $(IMAGENAME) ./build-all-full-linux.sh --clean
 	cd install && find . -type f -exec ldd {} \; 2>&1 | grep -v 'not a dynamic executable' | sed 's/(.*//' | sort | uniq
 
-	# Do some testing on some platforms where I can
-	$(MAKE) smoketestprep
-	$(MAKE) smokefull IMAGE=centos:centos7 OUT=centos7
-	$(MAKE) smokefull IMAGE=centos:centos8 OUT=centos8
-	$(MAKE) smokefull IMAGE=ubuntu:16.04 OUT=ubuntu1604
-	$(MAKE) smokefull IMAGE=ubuntu:18.04 OUT=ubuntu1804
-	$(MAKE) smokefull IMAGE=ubuntu:20.04 OUT=ubuntu2004
+	@# Do some testing on some platforms where I can
+	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) smoketestprep
+	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) smoke IMAGE=centos:centos7 OUT=centos7
+	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) smoke IMAGE=centos:centos8 OUT=centos8
+	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) smoke IMAGE=ubuntu:16.04 OUT=ubuntu1604
+	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) smoke IMAGE=ubuntu:18.04 OUT=ubuntu1804
+	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) smoke IMAGE=ubuntu:20.04 OUT=ubuntu2004
 
 build-qemu:
 	rm -rf build-qemu install-qemu
