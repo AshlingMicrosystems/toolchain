@@ -161,6 +161,8 @@ echo "Building libgmp... logging to ${LOGFILE}"
   if ! grep 'if (UNLIKELY (abs_csize > ~(mp_bitcnt_t) 0 / 8))' mpz/inp_raw.c; then
     echo "Applying PATCH gmp-cve-2021-43618.patch..."
     patch -p1 < ${SRCPREFIX}/toolchain/patches/gmp-cve-2021-43618.patch
+    # Update the version information of this release of GMP
+    find . -type f -exec sed -i 's/6\.2\.1/6.2.1.fix1/' {} \;
   fi
   mkdir -p ${BUILDPREFIX}/libgmp
   cd ${BUILDPREFIX}/libgmp
@@ -363,6 +365,8 @@ echo "Building GCC (Stage 1)... logging to ${LOGFILE}"
   if ! grep 'if (UNLIKELY (abs_csize > ~(mp_bitcnt_t) 0 / 8))' mpz/inp_raw.c; then
     echo "Applying PATCH gmp-cve-2021-43618.patch..."
     patch -p1 < ${SRCPREFIX}/toolchain/patches/gmp-cve-2021-43618.patch
+    # Update the version information of this release of GMP
+    find . -type f -exec sed -i 's/6\.2\.1/6.2.1.fix1/' {} \;
   fi
 
   export PKG_CONFIG_PATH=$(ls -d ${LIBINSTPREFIX}/*/lib/pkgconfig | tr '\n' ':' | sed 's/.$//')
