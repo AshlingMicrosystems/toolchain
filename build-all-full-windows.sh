@@ -314,6 +314,8 @@ echo "Building newlib... logging to ${LOGFILE}"
       --enable-newlib-io-long-long                   \
       --enable-newlib-io-c99-formats                 \
       --enable-newlib-register-fini                  \
+      --enable-newlib-multithread                    \
+      --enable-newlib-retargetable-locking           \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
   make install
@@ -351,6 +353,8 @@ echo "Building newlib-nano... logging to ${LOGFILE}"
       --enable-newlib-nano-formatted-io              \
       --disable-newlib-supplied-syscalls             \
       --disable-nls                                  \
+      --enable-newlib-multithread                    \
+      --enable-newlib-retargetable-locking           \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
   make install
@@ -388,6 +392,9 @@ echo "Building picolibc... logging to ${LOGFILE}"
       -Dincludedir=picolibc/riscv32-unknown-elf/include \
       -Dlibdir=picolibc/riscv32-unknown-elf/lib \
       -Dnewlib-global-errno=true \
+      -Dnewlib-multithread=true \
+      -Dnewlib-retargetable-locking=true \
+      -Dnewlib-have-fcntl=true \
       --cross-file ${SRCPREFIX}/picolibc/scripts/cross-riscv32-unknown-elf.txt \
       --prefix=${INSTALLPREFIX}
   ninja
