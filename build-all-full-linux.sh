@@ -21,6 +21,7 @@ PARALLEL_JOBS=$(nproc)
 # Default values which can be overriden options specified in this script:
 DEFAULTARCH=rv32ima
 DEFAULTABI=ilp32
+MULTILIBS="rv32ea-ilp32e--zicbom rv32ia-ilp32--zicbom rv32ima-ilp32-- rv64ima-lp64--zicbom rv64imaf-lp64--zicbom rv64imaf-lp64f--zicbom"
 BUGURL=
 PKGVERS=
 OPT_DEBUG_CFLAGS_DEBUG="-O0 -g3"
@@ -111,11 +112,16 @@ if [ "x${PKGVERS}" != "x" ]; then
   EXTRA_OPTS="${EXTRA_OPTS} --with-pkgversion='${PKGVERS}'"
 fi
 
+# Erase build directories to allow multiple toolchain variants to be built
+rm -rf ${INSTALLPREFIX} ${INSTALLPREFIX}-newlib ${INSTALLPREFIX}-picolibc \
+       ${INSTALLPREFIX}-combined
+mkdir ${INSTALLPREFIX}-newlib ${INSTALLPREFIX}-picolibc ${INSTALLPREFIX}-combined
+
 # Log build environment (commits being built)
 LOGFILE="${LOGDIR}/environment.log"
 echo "Logging build environment... logging to ${LOGFILE}"
 (
-  set -e
+  set -xe
   cd ${SRCPREFIX}
   env
   echo "======"
@@ -130,7 +136,7 @@ fi
 LOGFILE="${LOGDIR}/libexpat.log"
 echo "Building libexpat... logging to ${LOGFILE}"
 (
-  set -e
+  set -xe
   mkdir -p ${BUILDPREFIX}/libexpat
   cd ${BUILDPREFIX}/libexpat
   cmake ../../libexpat/expat \
@@ -271,17 +277,22 @@ echo "Building python... logging to ${LOGFILE}"
     --enable-shared \
     --prefix=${INSTALLPREFIX}
   make
-  make install
 
-  # We need to patch the rpath for python for GDB to successfully use it
-  patchelf --set-rpath '$ORIGIN/../lib' ${INSTALLPREFIX}/bin/python3.10
-  patchelf --set-rpath '$ORIGIN' ${INSTALLPREFIX}/lib/libpython3.so
-  patchelf --set-rpath '$ORIGIN' ${INSTALLPREFIX}/lib/libpython3.10.so.1.0
+  for SUFFIX in -newlib -picolibc -combined; do
+    mv ${INSTALLPREFIX}${SUFFIX} ${INSTALLPREFIX}
+    make install
 
-  # Additionally need to strip debug information from these files
-  strip -g ${INSTALLPREFIX}/bin/python3.10 \
-    ${INSTALLPREFIX}/lib/libpython3.so \
-    ${INSTALLPREFIX}/lib/libpython3.10.so.1.0
+    # We need to patch the rpath for python for GDB to successfully use it
+    patchelf --set-rpath '$ORIGIN/../lib' ${INSTALLPREFIX}/bin/python3.10
+    patchelf --set-rpath '$ORIGIN' ${INSTALLPREFIX}/lib/libpython3.so
+    patchelf --set-rpath '$ORIGIN' ${INSTALLPREFIX}/lib/libpython3.10.so.1.0
+
+    # Additionally need to strip debug information from these files
+    strip -g ${INSTALLPREFIX}/bin/python3.10 \
+      ${INSTALLPREFIX}/lib/libpython3.so \
+      ${INSTALLPREFIX}/lib/libpython3.10.so.1.0
+    mv ${INSTALLPREFIX} ${INSTALLPREFIX}${SUFFIX}
+  done
 ) > ${LOGFILE} 2>&1
 if [ $? -ne 0 ]; then
   echo "Error building python, check log file!" > /dev/stderr
@@ -292,7 +303,7 @@ fi
 LOGFILE="${LOGDIR}/binutils.log"
 echo "Building Binutils... logging to ${LOGFILE}"
 (
-  set -e
+  set -xe
   export PKG_CONFIG_PATH=$(ls -d ${LIBINSTPREFIX}/*/lib/pkgconfig | tr '\n' ':' | sed 's/.$//')
   mkdir -p ${BUILDPREFIX}/binutils
   cd ${BUILDPREFIX}/binutils
@@ -309,8 +320,13 @@ echo "Building Binutils... logging to ${LOGFILE}"
       --with-system-zlib              \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
-  make install-strip
-  make install-pdf
+
+  for SUFFIX in -newlib -picolibc -combined; do
+    mv ${INSTALLPREFIX}${SUFFIX} ${INSTALLPREFIX}
+    make install-strip
+    make install-pdf
+    mv ${INSTALLPREFIX} ${INSTALLPREFIX}${SUFFIX}
+  done
 ) > ${LOGFILE} 2>&1
 if [ $? -ne 0 ]; then
   echo "Error building Binutils, check log file!" > /dev/stderr
@@ -321,7 +337,9 @@ fi
 LOGFILE="${LOGDIR}/gdb.log"
 echo "Building GDB... logging to ${LOGFILE}"
 (
-  set -e
+  set -xe
+  # Build this against the newlib tools (GDB required installed Python)
+  mv ${INSTALLPREFIX}-newlib ${INSTALLPREFIX}
   export PKG_CONFIG_PATH=$(ls -d ${LIBINSTPREFIX}/*/lib/pkgconfig | tr '\n' ':' | sed 's/.$//')
   mkdir -p ${BUILDPREFIX}/gdb
   cd ${BUILDPREFIX}/gdb
@@ -342,11 +360,17 @@ echo "Building GDB... logging to ${LOGFILE}"
       --with-system-zlib              \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS} all-gdb V=1
-  make install-strip-gdb
-  make install-pdf
+  mv ${INSTALLPREFIX} ${INSTALLPREFIX}-newlib
 
-  # Patch the rpath for GDB
-  patchelf --set-rpath '$ORIGIN/../lib' ${INSTALLPREFIX}/bin/riscv32-unknown-elf-gdb
+  for SUFFIX in -newlib -picolibc -combined; do
+    mv ${INSTALLPREFIX}${SUFFIX} ${INSTALLPREFIX}
+    make install-strip-gdb
+    make install-pdf
+
+    # Patch the rpath for GDB
+    patchelf --set-rpath '$ORIGIN/../lib' ${INSTALLPREFIX}/bin/riscv32-unknown-elf-gdb
+    mv ${INSTALLPREFIX} ${INSTALLPREFIX}${SUFFIX}
+  done
 ) > ${LOGFILE} 2>&1
 if [ $? -ne 0 ]; then
   echo "Error building GDB, check log file!" > /dev/stderr
@@ -357,7 +381,9 @@ fi
 LOGFILE="${LOGDIR}/gcc-stage1.log"
 echo "Building GCC (Stage 1)... logging to ${LOGFILE}"
 (
-  set -e
+  set -xe
+  # Build this against the newlib tools (just needs any installed binutils)
+  mv ${INSTALLPREFIX}-newlib ${INSTALLPREFIX}
   cd ${SRCPREFIX}/gcc
   ./contrib/download_prerequisites
   # Apply a local patch to work around CVE-2021-43618
@@ -393,7 +419,7 @@ echo "Building GCC (Stage 1)... logging to ${LOGFILE}"
       --disable-bootstrap                                 \
       --enable-multilib                                   \
       --with-isa-spec=2.2                                 \
-      --with-multilib-generator="rv32ea-ilp32e--zicbom rv32ia-ilp32--zicbom rv32ima-ilp32--zicbom rv64ima-lp64--zicbom rv64imaf-lp64--zicbom rv64imaf-lp64f--zicbom" \
+      --with-multilib-generator="${MULTILIBS}"            \
       --with-arch=${DEFAULTARCH}                          \
       --with-abi=${DEFAULTABI}                            \
       --with-zstd=no                                      \
@@ -401,7 +427,13 @@ echo "Building GCC (Stage 1)... logging to ${LOGFILE}"
       --disable-werror \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
-  make install-strip
+  mv ${INSTALLPREFIX} ${INSTALLPREFIX}-newlib
+
+  for SUFFIX in -newlib -picolibc -combined; do
+    mv ${INSTALLPREFIX}${SUFFIX} ${INSTALLPREFIX}
+    make install-strip
+    mv ${INSTALLPREFIX} ${INSTALLPREFIX}${SUFFIX}
+  done
 ) > ${LOGFILE} 2>&1
 if [ $? -ne 0 ]; then
   echo "Error building GCC, check log file!" > /dev/stderr
@@ -414,7 +446,8 @@ fi
 LOGFILE="${LOGDIR}/newlib.log"
 echo "Building newlib... logging to ${LOGFILE}"
 (
-  set -e
+  set -xe
+  mv ${INSTALLPREFIX}-newlib ${INSTALLPREFIX}
   PATH=${INSTALLPREFIX}/bin:${PATH}
   mkdir -p ${BUILDPREFIX}/newlib
   cd ${BUILDPREFIX}/newlib
@@ -433,7 +466,13 @@ echo "Building newlib... logging to ${LOGFILE}"
       --enable-newlib-retargetable-locking           \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
-  make install
+  mv ${INSTALLPREFIX} ${INSTALLPREFIX}-newlib
+
+  for SUFFIX in -newlib -combined; do
+    mv ${INSTALLPREFIX}${SUFFIX} ${INSTALLPREFIX}
+    make install
+    mv ${INSTALLPREFIX} ${INSTALLPREFIX}${SUFFIX}
+  done
 ) > ${LOGFILE} 2>&1
 if [ $? -ne 0 ]; then
   echo "Error building newlib, check log file!" > /dev/stderr
@@ -446,7 +485,8 @@ fi
 LOGFILE="${LOGDIR}/newlib-nano.log"
 echo "Building newlib-nano... logging to ${LOGFILE}"
 (
-  set -e
+  set -xe
+  mv ${INSTALLPREFIX}-newlib ${INSTALLPREFIX}
   PATH=${INSTALLPREFIX}/bin:${PATH}
   mkdir -p ${BUILDPREFIX}/newlib-nano
   cd ${BUILDPREFIX}/newlib-nano
@@ -473,33 +513,38 @@ echo "Building newlib-nano... logging to ${LOGFILE}"
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
   make install
+  mv ${INSTALLPREFIX} ${INSTALLPREFIX}-newlib
 
-  # Manualy copy the nano variant to the expected location
-  # Information obtained from "riscv-gnu-toolchain"
-  for multilib in $(${INSTALLPREFIX}/bin/riscv32-unknown-elf-gcc --print-multi-lib); do
-    multilibdir=$(echo ${multilib} | sed 's/;.*//')
-    for file in libc.a libm.a libg.a libgloss.a; do
-      cp ${BUILDPREFIX}/newlib-nano-inst/riscv32-unknown-elf/lib/${multilibdir}/${file} \
-         ${INSTALLPREFIX}/riscv32-unknown-elf/lib/${multilibdir}/${file%.*}_nano.${file##*.}
+  for SUFFIX in -newlib -combined; do
+    mv ${INSTALLPREFIX}${SUFFIX} ${INSTALLPREFIX}
+    # Manualy copy the nano variant to the expected location
+    # Information obtained from "riscv-gnu-toolchain"
+    for multilib in $(${INSTALLPREFIX}/bin/riscv32-unknown-elf-gcc --print-multi-lib); do
+      multilibdir=$(echo ${multilib} | sed 's/;.*//')
+      for file in libc.a libm.a libg.a libgloss.a; do
+        cp ${BUILDPREFIX}/newlib-nano-inst/riscv32-unknown-elf/lib/${multilibdir}/${file} \
+          ${INSTALLPREFIX}/riscv32-unknown-elf/lib/${multilibdir}/${file%.*}_nano.${file##*.}
+      done
+      cp ${BUILDPREFIX}/newlib-nano-inst/riscv32-unknown-elf/lib/${multilibdir}/crt0.o \
+        ${INSTALLPREFIX}/riscv32-unknown-elf/lib/${multilibdir}/crt0.o
     done
-    cp ${BUILDPREFIX}/newlib-nano-inst/riscv32-unknown-elf/lib/${multilibdir}/crt0.o \
-       ${INSTALLPREFIX}/riscv32-unknown-elf/lib/${multilibdir}/crt0.o
+    mkdir -p ${INSTALLPREFIX}/riscv32-unknown-elf/include/newlib-nano
+    cp ${BUILDPREFIX}/newlib-nano-inst/riscv32-unknown-elf/include/newlib.h \
+      ${INSTALLPREFIX}/riscv32-unknown-elf/include/newlib-nano/newlib.h
+  mv ${INSTALLPREFIX} ${INSTALLPREFIX}${SUFFIX}
   done
-  mkdir -p ${INSTALLPREFIX}/riscv32-unknown-elf/include/newlib-nano
-  cp ${BUILDPREFIX}/newlib-nano-inst/riscv32-unknown-elf/include/newlib.h \
-     ${INSTALLPREFIX}/riscv32-unknown-elf/include/newlib-nano/newlib.h
 ) > ${LOGFILE} 2>&1
 if [ $? -ne 0 ]; then
   echo "Error building newlib-nano, check log file!" > /dev/stderr
   exit 1
 fi
 
-# Picolibc
-# TODO: Make any required configuration changes for pico-libc
-LOGFILE="${LOGDIR}/picolibc.log"
-echo "Building picolibc... logging to ${LOGFILE}"
+# Picolibc (combined)
+LOGFILE="${LOGDIR}/picolibc-combined.log"
+echo "Building picolibc (combined config)... logging to ${LOGFILE}"
 (
-  set -e
+  set -xe
+  mv ${INSTALLPREFIX}-combined ${INSTALLPREFIX}
   PATH=${INSTALLPREFIX}/bin:${PATH}
   mkdir -p ${BUILDPREFIX}/picolibc
   cd ${BUILDPREFIX}/picolibc
@@ -514,6 +559,36 @@ echo "Building picolibc... logging to ${LOGFILE}"
       --prefix=${INSTALLPREFIX}
   ninja
   ninja install
+  mv ${INSTALLPREFIX} ${INSTALLPREFIX}-combined
+) > ${LOGFILE} 2>&1
+if [ $? -ne 0 ]; then
+  echo "Error building picolibc, check log file!" > /dev/stderr
+  exit 1
+fi
+
+# Picolibc-defaultlibc
+LOGFILE="${LOGDIR}/picolibc-default.log"
+echo "Building picolibc (default libc config)... logging to ${LOGFILE}"
+(
+  set -xe
+  mv ${INSTALLPREFIX}-picolibc ${INSTALLPREFIX}
+  PATH=${INSTALLPREFIX}/bin:${PATH}
+  mkdir -p ${BUILDPREFIX}/picolibc-default
+  cd ${BUILDPREFIX}/picolibc-default
+  meson ${SRCPREFIX}/picolibc \
+      -Dincludedir=include \
+      -Dlibdir=lib \
+      -Dsysroot-install=true \
+      -Dsystem-libc=true \
+      -Dnewlib-global-errno=true \
+      -Dnewlib-multithread=true \
+      -Dnewlib-retargetable-locking=true \
+      -Dnewlib-have-fcntl=true \
+      --cross-file ${SRCPREFIX}/picolibc/scripts/cross-riscv32-unknown-elf.txt \
+      --prefix=${INSTALLPREFIX}/riscv32-unknown-elf
+  ninja
+  ninja install
+  mv ${INSTALLPREFIX} ${INSTALLPREFIX}-picolibc
 ) > ${LOGFILE} 2>&1
 if [ $? -ne 0 ]; then
   echo "Error building picolibc, check log file!" > /dev/stderr
@@ -524,7 +599,9 @@ fi
 LOGFILE="${LOGDIR}/gcc-stage2.log"
 echo "Building GCC (Stage 2)... logging to ${LOGFILE}"
 (
-  set -e
+  set -xe
+  # Build this GCC against the newlib toolchain
+  mv ${INSTALLPREFIX}-newlib ${INSTALLPREFIX}
   export PKG_CONFIG_PATH=$(ls -d ${LIBINSTPREFIX}/*/lib/pkgconfig | tr '\n' ':' | sed 's/.$//')
   cd ${SRCPREFIX}/gcc
   mkdir -p ${BUILDPREFIX}/gcc-stage2
@@ -550,16 +627,79 @@ echo "Building GCC (Stage 2)... logging to ${LOGFILE}"
       --disable-bootstrap                                 \
       --enable-multilib                                   \
       --with-isa-spec=2.2                                 \
-      --with-multilib-generator="rv32ea-ilp32e--zicbom rv32ia-ilp32--zicbom rv32ima-ilp32--zicbom rv64ima-lp64--zicbom rv64imaf-lp64--zicbom rv64imaf-lp64f--zicbom" \
+      --with-multilib-generator="${MULTILIBS}"            \
       --with-arch=${DEFAULTARCH}                          \
       --with-abi=${DEFAULTABI}                            \
       --with-zstd=no                                      \
       --with-system-zlib                                  \
+      --enable-libstdcxx-pch=no                           \
+      --disable-werror \
+      ${EXTRA_OPTS}
+  make -j${PARALLEL_JOBS}
+  mv ${INSTALLPREFIX} ${INSTALLPREFIX}-newlib
+
+  for SUFFIX in -newlib -combined; do
+    mv ${INSTALLPREFIX}${SUFFIX} ${INSTALLPREFIX}
+    make install-strip
+    make install-pdf
+    mv ${INSTALLPREFIX} ${INSTALLPREFIX}${SUFFIX}
+  done
+) > ${LOGFILE} 2>&1
+if [ $? -ne 0 ]; then
+  echo "Error building GCC, check log file!" > /dev/stderr
+  exit 1
+fi
+
+# GCC (stage 2 pico)
+LOGFILE="${LOGDIR}/gcc-stage2-pico.log"
+echo "Building GCC (Stage 2 Pico)... logging to ${LOGFILE}"
+(
+  set -xe
+  # Build this GCC against the picolibc installation
+  mv ${INSTALLPREFIX}-picolibc ${INSTALLPREFIX}
+  export PKG_CONFIG_PATH=$(ls -d ${LIBINSTPREFIX}/*/lib/pkgconfig | tr '\n' ':' | sed 's/.$//')
+  cd ${SRCPREFIX}/gcc
+  mkdir -p ${BUILDPREFIX}/gcc-stage2p
+  cd ${BUILDPREFIX}/gcc-stage2p
+  CFLAGS="${OPT_DEBUG_CFLAGS} $(pkg-config --cflags-only-I zlib)" \
+  CXXFLAGS="${OPT_DEBUG_CFLAGS} $(pkg-config --cflags-only-I zlib)" \
+  LDFLAGS="$(pkg-config --libs-only-L zlib)" \
+  ../../gcc/configure                                     \
+      --target=riscv32-unknown-elf                        \
+      --prefix=${INSTALLPREFIX}                           \
+      --with-sysroot=${INSTALLPREFIX}/riscv32-unknown-elf \
+      --with-native-system-header-dir=/include            \
+      --with-newlib                                       \
+      --disable-shared                                    \
+      --enable-languages=c,c++                            \
+      --enable-tls                                        \
+      --disable-werror                                    \
+      --disable-libmudflap                                \
+      --disable-libssp                                    \
+      --disable-quadmath                                  \
+      --disable-libgomp                                   \
+      --disable-nls                                       \
+      --disable-bootstrap                                 \
+      --enable-multilib                                   \
+      --with-isa-spec=2.2                                 \
+      --with-arch=${DEFAULTARCH}                          \
+      --with-abi=${DEFAULTABI}                            \
+      --with-multilib-generator="${MULTILIBS}"            \
+      --with-zstd=no                                      \
+      --with-system-zlib                                  \
+      --enable-libstdcxx-pch=no                           \
+      --disable-wchar_t                                   \
       --disable-werror \
       ${EXTRA_OPTS}
   make -j${PARALLEL_JOBS}
   make install-strip
-  make install-pdf
+  mv ${INSTALLPREFIX} ${INSTALLPREFIX}-picolibc
+
+  # Copy picolibc libstdc++/libsupc++ into combined toolchain
+  cd ${INSTALLPREFIX}-picolibc
+  for i in $(find . -name libstdc++.a); do cp $i ../install-combined/picolibc/$i; done
+  for i in $(find . -name libsupc++.a); do cp $i ../install-combined/picolibc/$i; done
+  rsync -a riscv32-unknown-elf/include/c++/ ../install-combined/picolibc/riscv32-unknown-elf/include/c++/
 ) > ${LOGFILE} 2>&1
 if [ $? -ne 0 ]; then
   echo "Error building GCC, check log file!" > /dev/stderr
@@ -570,10 +710,12 @@ fi
 LOGFILE="${LOGDIR}/strip-libraries.log"
 echo "Stripping target libraries... logging to ${LOGFILE}"
 (
-  set -e
-  cd ${INSTALLPREFIX}/riscv32-unknown-elf
-  find . -\( -name '*.a' -o -name '*.o' -\) -print -exec \
-    ../bin/riscv32-unknown-elf-strip -g {} \;
+  set -xe
+  for SUFFIX in -newlib -picolibc -combined; do
+    cd ${INSTALLPREFIX}${SUFFIX}/riscv32-unknown-elf
+    find . -\( -name '*.a' -o -name '*.o' -\) -print -exec \
+      ../bin/riscv32-unknown-elf-strip -g {} \;
+  done
 ) > ${LOGFILE} 2>&1
 if [ $? -ne 0 ]; then
   echo "Error stripping target libraries, check log file!" > /dev/stderr

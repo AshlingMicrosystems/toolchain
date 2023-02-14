@@ -41,18 +41,38 @@ windows-package:
 	cp -rf python/Python-$(PYTHONVERS)/Include python/python-$(PYTHONVERS)-combined/Include
 	cp python/Python-$(PYTHONVERS)/PC/pyconfig.h python/python-$(PYTHONVERS)-combined/Include
 	@# Now do the build
-	rm -rf build install
+	rm -rf build install install-combined install-newlib install-picolibc
 	./toolchain/build-all-full-windows.sh
-	find install -name '*.dll.a' -exec rm {} \;
-	cd install && ../toolchain/extract-ucrt-dlls.sh
-	cd install/bin && unzip -q ../../python/python-$(PYTHONVERS)-embed-amd64.zip
-	cd install/bin && rm -f python.exe pythonw.exe
-	mkdir -p install/share/doc install/share/doc/gcc
-	cp -r $(DOCDIR)/*.pdf install/share/doc/
-	cp -r $(DOCDIR)/gcc/*.pdf install/share/doc/gcc/
-	mv install $(PACKAGE)
+	find install-combined -name '*.dll.a' -exec rm {} \;
+	find install-newlib -name '*.dll.a' -exec rm {} \;
+	find install-picolibc -name '*.dll.a' -exec rm {} \;
+	cd install-combined && ../toolchain/extract-ucrt-dlls.sh
+	cd install-newlib && ../toolchain/extract-ucrt-dlls.sh
+	cd install-picolibc && ../toolchain/extract-ucrt-dlls.sh
+	cd install-combined/bin && unzip -q ../../python/python-$(PYTHONVERS)-embed-amd64.zip
+	cd install-newlib/bin && unzip -q ../../python/python-$(PYTHONVERS)-embed-amd64.zip
+	cd install-picolibc/bin && unzip -q ../../python/python-$(PYTHONVERS)-embed-amd64.zip
+	cd install-combined/bin && rm -f python.exe pythonw.exe
+	cd install-newlib/bin && rm -f python.exe pythonw.exe
+	cd install-picolibc/bin && rm -f python.exe pythonw.exe
+	mkdir -p install-combined/share/doc install-combined/share/doc/gcc
+	mkdir -p install-newlib/share/doc install-newlib/share/doc/gcc
+	mkdir -p install-picolibc/share/doc install-picolibc/share/doc/gcc
+	cp -r $(DOCDIR)/*.pdf install-combined/share/doc/
+	cp -r $(DOCDIR)/*.pdf install-newlib/share/doc/
+	cp -r $(DOCDIR)/*.pdf install-picolibc/share/doc/
+	cp -r $(DOCDIR)/gcc/*.pdf install-combined/share/doc/gcc/
+	cp -r $(DOCDIR)/gcc/*.pdf install-newlib/share/doc/gcc/
+	cp -r $(DOCDIR)/gcc/*.pdf install-picolibc/share/doc/gcc/
+	mv install-combined $(PACKAGE)
 	zip -9r $(PACKAGE).zip $(PACKAGE)
-	mv $(PACKAGE) install
+	mv $(PACKAGE) install-combined
+	mv install-newlib $(PACKAGE)
+	zip -9r $(PACKAGE)-newlib.zip $(PACKAGE)
+	mv $(PACKAGE) install-newlib
+	mv install-picolibc $(PACKAGE)
+	zip -9r $(PACKAGE)-picolibc.zip $(PACKAGE)
+	mv $(PACKAGE) install-picolibc
 
 linux-package:
 	@# Check environment before running
@@ -73,9 +93,15 @@ linux-package:
 	@test -d sqlite || (echo "Unable to find sqlite directory!"; false)
 	@test -d zlib || (echo "Unable to find zlib directory!"; false)
 	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) build-full
-	rm -f install/bin/2to3* install/bin/idle3* install/bin/pip3* install/bin/pydoc3* install/bin/python3*
-	tar cf $(PACKAGE).tar --transform 's/^install/$(PACKAGE)/' install
+	rm -f install-combined/bin/2to3* install-combined/bin/idle3* install-combined/bin/pip3* install-combined/bin/pydoc3* install-combined/bin/python3*
+	rm -f install-newlib/bin/2to3* install-newlib/bin/idle3* install-newlib/bin/pip3* install-newlib/bin/pydoc3* install-newlib/bin/python3*
+	rm -f install-picolibc/bin/2to3* install-picolibc/bin/idle3* install-picolibc/bin/pip3* install-picolibc/bin/pydoc3* install-picolibc/bin/python3*
+	tar cf $(PACKAGE).tar --transform 's/^install-combined/$(PACKAGE)/' install-combined
+	tar cf $(PACKAGE)-newlib.tar --transform 's/^install-newlib/$(PACKAGE)/' install-newlib
+	tar cf $(PACKAGE)-picolibc.tar --transform 's/^install-picolibc/$(PACKAGE)/' install-picolibc
 	xz -9ev $(PACKAGE).tar
+	xz -9ev $(PACKAGE)-newlib.tar
+	xz -9ev $(PACKAGE)-combined.tar
 
 build:
 	rm -rf build install
@@ -92,10 +118,10 @@ build:
 	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) smoke IMAGE=ubuntu:20.04 OUT=ubuntu2004
 
 build-full:
-	rm -rf build install
+	rm -rf build install install-combined install-newlib install-picolibc
 	docker build -t $(IMAGENAME) -f toolchain/Dockerfile-full-linux toolchain
 	docker run --rm -t -i -u $(UID):$(UID) -v $(PWD):/build -w /build/toolchain $(IMAGENAME) ./build-all-full-linux.sh --clean
-	cd install && find . -type f -exec ldd {} \; 2>&1 | grep -v 'not a dynamic executable' | sed 's/(.*//' | sort | uniq
+	cd install-combined && find . -type f -exec ldd {} \; 2>&1 | grep -v 'not a dynamic executable' | sed 's/(.*//' | sort | uniq
 
 	@# Do some testing on some platforms where I can
 	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) smoketestprep
@@ -121,10 +147,10 @@ smoketestprep:
 	cp toolchain/smoketest-disassemble/* smoketest/dis
 
 smoke:
-	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gcc -Os -flto test.c -o $(OUT).out
-	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gcc --specs=nano.specs -Os -flto test.c -o $(OUT).out
-	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gcc --specs=picolibc.specs --oslib=semihost -Os -flto test.c -o $(OUT).out
-	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gdb --version
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install-combined:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gcc -Os -flto test.c -o $(OUT).out
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install-combined:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gcc --specs=nano.specs -Os -flto test.c -o $(OUT).out
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install-combined:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gcc --specs=picolibc.specs --oslib=semihost -Os -flto test.c -o $(OUT).out
+	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install-combined:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gdb --version
 
 smokefull:
 	docker run --rm -t -i -u$(UID):$(UID) -v $(PWD)/install:/toolchain:ro -v $(PWD)/smoketest:/smoketest -w /smoketest $(IMAGE) /toolchain/bin/riscv32-unknown-elf-gcc -Os -flto test.c -o $(OUT).out
