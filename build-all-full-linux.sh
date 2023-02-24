@@ -283,14 +283,14 @@ echo "Building python... logging to ${LOGFILE}"
     make install
 
     # We need to patch the rpath for python for GDB to successfully use it
-    patchelf --set-rpath '$ORIGIN/../lib' ${INSTALLPREFIX}/bin/python3.10
+    patchelf --set-rpath '$ORIGIN/../lib' ${INSTALLPREFIX}/bin/python3.11
     patchelf --set-rpath '$ORIGIN' ${INSTALLPREFIX}/lib/libpython3.so
-    patchelf --set-rpath '$ORIGIN' ${INSTALLPREFIX}/lib/libpython3.10.so.1.0
+    patchelf --set-rpath '$ORIGIN' ${INSTALLPREFIX}/lib/libpython3.11.so.1.0
 
     # Additionally need to strip debug information from these files
-    strip -g ${INSTALLPREFIX}/bin/python3.10 \
+    strip -g ${INSTALLPREFIX}/bin/python3.11 \
       ${INSTALLPREFIX}/lib/libpython3.so \
-      ${INSTALLPREFIX}/lib/libpython3.10.so.1.0
+      ${INSTALLPREFIX}/lib/libpython3.11.so.1.0
     mv ${INSTALLPREFIX} ${INSTALLPREFIX}${SUFFIX}
   done
 ) > ${LOGFILE} 2>&1

@@ -101,7 +101,7 @@ linux-package:
 	tar cf $(PACKAGE)-picolibc.tar --transform 's/^install-picolibc/$(PACKAGE)/' install-picolibc
 	xz -9ev $(PACKAGE).tar
 	xz -9ev $(PACKAGE)-newlib.tar
-	xz -9ev $(PACKAGE)-combined.tar
+	xz -9ev $(PACKAGE)-picolibc.tar
 
 build:
 	rm -rf build install
