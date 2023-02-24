@@ -211,7 +211,6 @@ echo "Building Binutils... logging to ${LOGFILE}"
   for SUFFIX in -newlib -picolibc -combined; do
     mv ${INSTALLPREFIX}${SUFFIX} ${INSTALLPREFIX}
     make install-strip
-    make install-pdf
     mv ${INSTALLPREFIX} ${INSTALLPREFIX}${SUFFIX}
   done
 ) > ${LOGFILE} 2>&1
@@ -242,7 +241,7 @@ echo "Building GDB... logging to ${LOGFILE}"
       --with-system-readline          \
       --disable-werror                \
       --enable-tui=no                 \
-      --with-python=${SRCPREFIX}/python/python-3.10.5-combined/python.exe \
+      --with-python=${SRCPREFIX}/python/python-3.11.1-combined/python.exe \
       --with-libgmp-prefix=${LIBINSTPREFIX}/libgmp \
       --with-isa-spec=2.2             \
       --with-system-zlib              \
@@ -254,10 +253,6 @@ echo "Building GDB... logging to ${LOGFILE}"
   for SUFFIX in -newlib -picolibc -combined; do
     mv ${INSTALLPREFIX}${SUFFIX} ${INSTALLPREFIX}
     make install-strip-gdb
-    make install-pdf
-
-    # Patch the rpath for GDB
-    patchelf --set-rpath '$ORIGIN/../lib' ${INSTALLPREFIX}/bin/riscv32-unknown-elf-gdb
     mv ${INSTALLPREFIX} ${INSTALLPREFIX}${SUFFIX}
   done
 ) > ${LOGFILE} 2>&1
@@ -270,7 +265,9 @@ fi
 LOGFILE="${LOGDIR}/gcc-stage1.log"
 echo "Building GCC (Stage 1)... logging to ${LOGFILE}"
 (
-  set -e
+  set -xe
+  # Build this against the newlib tools (just needs any installed binutils)
+  mv ${INSTALLPREFIX}-newlib ${INSTALLPREFIX}
   cd ${SRCPREFIX}/gcc
   ./contrib/download_prerequisites
   # Apply a local patch to work around CVE-2021-43618
@@ -463,7 +460,6 @@ echo "Building picolibc (default libc config)... logging to ${LOGFILE}"
       -Dincludedir=include \
       -Dlibdir=lib \
       -Dsysroot-install=true \
-      -Dsystem-libc=true \
       -Dnewlib-global-errno=true \
       -Dnewlib-multithread=true \
       -Dnewlib-retargetable-locking=true \
@@ -522,7 +518,6 @@ echo "Building GCC (Stage 2)... logging to ${LOGFILE}"
   for SUFFIX in -newlib -combined; do
     mv ${INSTALLPREFIX}${SUFFIX} ${INSTALLPREFIX}
     make install-strip
-    make install-pdf
     mv ${INSTALLPREFIX} ${INSTALLPREFIX}${SUFFIX}
   done
 ) > ${LOGFILE} 2>&1
@@ -544,7 +539,6 @@ echo "Building GCC (Stage 2 Pico)... logging to ${LOGFILE}"
   cd ${BUILDPREFIX}/gcc-stage2p
   CFLAGS="${OPT_DEBUG_CFLAGS}" \
   CXXFLAGS="${OPT_DEBUG_CFLAGS}" \
-  LDFLAGS="$(pkg-config --libs-only-L zlib)" \
   ../../gcc/configure                                     \
       --target=riscv32-unknown-elf                        \
       --prefix=${INSTALLPREFIX}                           \
