@@ -19,9 +19,9 @@ LOGDIR="${SRCPREFIX}/logs/$(date +%Y%m%d-%H%M)"
 PARALLEL_JOBS=$(nproc)
 
 # Default values which can be overriden options specified in this script:
-DEFAULTARCH=rv32ima
+DEFAULTARCH=rv32i
 DEFAULTABI=ilp32
-MULTILIBS="rv32ea-ilp32e--zicbom rv32ia-ilp32--zicbom rv32ima-ilp32-- rv64ima-lp64--zicbom rv64imaf-lp64--zicbom rv64imaf-lp64f--zicbom"
+MULTILIBS="rv32ea-ilp32e--zicbom rv32ia-ilp32--zicbom rv32ima-ilp32--zicbom rv64ima-lp64--zicbom rv64imaf-lp64--zicbom rv64imaf-lp64f--zicbom"
 BUGURL=
 PKGVERS=
 OPT_DEBUG_CFLAGS_DEBUG="-O0 -g3"
