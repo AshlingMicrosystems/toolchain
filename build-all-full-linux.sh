@@ -555,6 +555,7 @@ echo "Building picolibc (combined config)... logging to ${LOGFILE}"
       -Dnewlib-multithread=true \
       -Dnewlib-retargetable-locking=true \
       -Dnewlib-have-fcntl=true \
+      -Dspecs-template=picolibc.specs.combined.in \
       --cross-file ${SRCPREFIX}/picolibc/scripts/cross-riscv32-unknown-elf.txt \
       --prefix=${INSTALLPREFIX}
   ninja
@@ -608,6 +609,8 @@ echo "Building GCC (Stage 2)... logging to ${LOGFILE}"
   cd ${BUILDPREFIX}/gcc-stage2
   CFLAGS="${OPT_DEBUG_CFLAGS} $(pkg-config --cflags-only-I zlib)" \
   CXXFLAGS="${OPT_DEBUG_CFLAGS} $(pkg-config --cflags-only-I zlib)" \
+  CFLAGS_FOR_TARGET="-O2 -g" \
+  CXXFLAGS_FOR_TARGET="-O2 -g" \
   LDFLAGS="$(pkg-config --libs-only-L zlib)" \
   ../../gcc/configure                                     \
       --target=riscv32-unknown-elf                        \
@@ -663,6 +666,8 @@ echo "Building GCC (Stage 2 Pico)... logging to ${LOGFILE}"
   cd ${BUILDPREFIX}/gcc-stage2p
   CFLAGS="${OPT_DEBUG_CFLAGS} $(pkg-config --cflags-only-I zlib)" \
   CXXFLAGS="${OPT_DEBUG_CFLAGS} $(pkg-config --cflags-only-I zlib)" \
+  CFLAGS_FOR_TARGET="-O2 -g --specs=${BUILDPREFIX}/picolibc-default/picolibc.specs --oslib=semihost" \
+  CXXFLAGS_FOR_TARGET="-O2 -g --specs=${BUILDPREFIX}/picolibc-default/picolibc.specs --oslib=semihost" \
   LDFLAGS="$(pkg-config --libs-only-L zlib)" \
   ../../gcc/configure                                     \
       --target=riscv32-unknown-elf                        \
@@ -682,9 +687,9 @@ echo "Building GCC (Stage 2 Pico)... logging to ${LOGFILE}"
       --disable-bootstrap                                 \
       --enable-multilib                                   \
       --with-isa-spec=2.2                                 \
+      --with-multilib-generator="${MULTILIBS}"            \
       --with-arch=${DEFAULTARCH}                          \
       --with-abi=${DEFAULTABI}                            \
-      --with-multilib-generator="${MULTILIBS}"            \
       --with-zstd=no                                      \
       --with-system-zlib                                  \
       --enable-libstdcxx-pch=no                           \
